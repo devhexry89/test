@@ -22,11 +22,35 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Properties;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.UUID;
 
 public class AuroraChatTags implements ModInitializer {
     private static final Properties TAGS = new Properties();
     private static Path savePath;
+    private static final String DEFAULT_COLOR = "aqua";
+    // Minecraft's standard chat colors (RGB).
+    private static final Map<String, Integer> COLORS = new LinkedHashMap<>();
+    static {
+        COLORS.put("black", 0x000000);
+        COLORS.put("dark_blue", 0x0000AA);
+        COLORS.put("dark_green", 0x00AA00);
+        COLORS.put("dark_aqua", 0x00AAAA);
+        COLORS.put("dark_red", 0xAA0000);
+        COLORS.put("dark_purple", 0xAA00AA);
+        COLORS.put("gold", 0xFFAA00);
+        COLORS.put("gray", 0xAAAAAA);
+        COLORS.put("dark_gray", 0x555555);
+        COLORS.put("blue", 0x5555FF);
+        COLORS.put("green", 0x55FF55);
+        COLORS.put("aqua", 0x55FFFF);
+        COLORS.put("red", 0xFF5555);
+        COLORS.put("light_purple", 0xFF55FF);
+        COLORS.put("yellow", 0xFFFF55);
+        COLORS.put("white", 0xFFFFFF);
+    }
 
     @Override
     public void onInitialize() {
@@ -47,7 +71,9 @@ public class AuroraChatTags implements ModInitializer {
             if (sender == null) return message;
             String tag = TAGS.getProperty(sender.getUUID().toString());
             if (tag == null || tag.isBlank()) return message;
-            MutableComponent prefix = Component.literal("[" + tag + "] ").withColor(0x75BFFF);
+            String colorName = TAGS.getProperty(sender.getUUID() + ".color", DEFAULT_COLOR);
+            int rgb = COLORS.getOrDefault(colorName, COLORS.get(DEFAULT_COLOR));
+            MutableComponent prefix = Component.literal("[" + tag + "] ").withColor(rgb);
             return prefix.append(message);
         });
 
@@ -59,7 +85,20 @@ public class AuroraChatTags implements ModInitializer {
                         .then(Commands.argument("tag", StringArgumentType.word())
                             .executes(ctx -> setTag(ctx.getSource(),
                                 EntityArgument.getPlayer(ctx, "player"),
-                                StringArgumentType.getString(ctx, "tag"))))))
+                                StringArgumentType.getString(ctx, "tag"), DEFAULT_COLOR))
+                            .then(Commands.argument("color", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    for (String name : COLORS.keySet()) {
+                                        if (name.startsWith(builder.getRemaining().toLowerCase(Locale.ROOT))) {
+                                            builder.suggest(name);
+                                        }
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> setTag(ctx.getSource(),
+                                    EntityArgument.getPlayer(ctx, "player"),
+                                    StringArgumentType.getString(ctx, "tag"),
+                                    StringArgumentType.getString(ctx, "color")))))))
                 .then(Commands.literal("remove")
                     .then(Commands.argument("player", EntityArgument.player())
                         .executes(ctx -> removeTag(ctx.getSource(), EntityArgument.getPlayer(ctx, "player")))))
@@ -69,27 +108,43 @@ public class AuroraChatTags implements ModInitializer {
         });
     }
 
-    private static int setTag(CommandSourceStack source, ServerPlayer target, String tag) {
+    private static int setTag(CommandSourceStack source, ServerPlayer target, String tag, String color) {
         if (!tag.matches("[A-Za-z0-9_-]{1,20}")) {
             source.sendFailure(Component.literal("Tags must be 1-20 letters, numbers, _ or -."));
             return 0;
         }
+        String normalizedColor = color.toLowerCase(Locale.ROOT);
+        if (!COLORS.containsKey(normalizedColor)) {
+            source.sendFailure(Component.literal("Unknown color: " + color + ". Use: " + String.join(", ", COLORS.keySet())));
+            return 0;
+        }
         TAGS.setProperty(target.getUUID().toString(), tag);
+        TAGS.setProperty(target.getUUID() + ".color", normalizedColor);
         save();
-        source.sendSuccess(() -> Component.literal("Set " + target.getName().getString() + "'s chat tag to [" + tag + "]."), false);
+        source.sendSuccess(() -> Component.literal("Set " + target.getName().getString() + "'s chat tag to ")
+            .append(Component.literal("[" + tag + "]").withColor(COLORS.get(normalizedColor)))
+            .append(Component.literal(" (" + normalizedColor + ").")), false);
         return 1;
     }
 
     private static int removeTag(CommandSourceStack source, ServerPlayer target) {
         TAGS.remove(target.getUUID().toString());
+        TAGS.remove(target.getUUID() + ".color");
         save();
         source.sendSuccess(() -> Component.literal("Removed " + target.getName().getString() + "'s chat tag."), false);
         return 1;
     }
 
     private static int viewTag(CommandSourceStack source, ServerPlayer target) {
-        String tag = TAGS.getProperty(target.getUUID().toString(), "none");
-        source.sendSuccess(() -> Component.literal(target.getName().getString() + " tag: " + tag), false);
+        String tag = TAGS.getProperty(target.getUUID().toString());
+        if (tag == null) {
+            source.sendSuccess(() -> Component.literal(target.getName().getString() + " has no tag."), false);
+            return 1;
+        }
+        String color = TAGS.getProperty(target.getUUID() + ".color", DEFAULT_COLOR);
+        source.sendSuccess(() -> Component.literal(target.getName().getString() + " tag: ")
+            .append(Component.literal("[" + tag + "]").withColor(COLORS.getOrDefault(color, COLORS.get(DEFAULT_COLOR))))
+            .append(Component.literal(" (" + color + ")")), false);
         return 1;
     }
 
@@ -107,3 +162,4 @@ public class AuroraChatTags implements ModInitializer {
         }
     }
 }
+
