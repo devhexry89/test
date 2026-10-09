@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "aurorachattags",
+  "version": "${version}",
+  "name": "Aurora Chat Tags",
+  "description": "Operator-managed persistent player chat tags for Fabric servers.",
+  "environment": "server",
+  "entrypoints": { "main": ["com.aurora.chattags.AuroraChatTags"] },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
